@@ -33,3 +33,9 @@ person seen from a very different angle can be counted twice.
 appearance samples, the best match score seen and where it entered and left the
 frame, so the re-entry settings can be
 re-evaluated offline against real traffic. `persons` has one row per unique person.
+
+## Licence
+
+AGPL-3.0-or-later; see [LICENSE](LICENSE). Detection uses
+[Ultralytics YOLO](https://github.com/ultralytics/ultralytics), which is AGPL-3.0,
+and the YOLO11n weights are downloaded from Ultralytics when the image is built.
