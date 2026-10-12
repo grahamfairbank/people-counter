@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>People Counter</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f3f3f1; --surface: #fcfcfb; --border: #e1e0db; --grid: #e9e8e4;
+    --text: #0b0b0b; --text-2: #52514e; --text-3: #85847e;
+    --series: #2a78d6; --good: #008300; --warn: #b87a00; --bad: #c9302f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page: #111110; --surface: #1a1a19; --border: #33332f; --grid: #2a2a27;
+      --text: #ffffff; --text-2: #c3c2b7; --text-3: #8d8c84;
+      --series: #3987e5; --good: #35b535; --warn: #e0a020; --bad: #e66767;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 20px 16px 48px; display: grid; gap: 16px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 14px; margin: 0 0 12px; font-weight: 600; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; min-width: 0; }
+  .pill { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); font-weight: 600; }
+  .pill i { width: 9px; height: 9px; border-radius: 50%; background: var(--text-3); }
+  .pill.streaming i { background: var(--good); }
+  .pill.connecting i, .pill.starting i { background: var(--warn); }
+  .pill.error i { background: var(--bad); }
+  .top { display: grid; grid-template-columns: minmax(0, 3fr) minmax(260px, 2fr); gap: 16px; }
+  @media (max-width: 820px) { .top { grid-template-columns: 1fr; } }
+  .live { background: #000; border-radius: 6px; aspect-ratio: 16 / 9; display: grid; place-items: center; overflow: hidden; color: #aaa; }
+  .live img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0; }
+  dt { color: var(--text-2); }
+  dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
+  .error { color: var(--bad); margin-top: 12px; overflow-wrap: anywhere; }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+  @media (max-width: 640px) { .tiles { grid-template-columns: repeat(2, 1fr); } }
+  .tile .v { font-size: 28px; font-weight: 600; line-height: 1.2; }
+  .tile .l { color: var(--text-2); }
+  .bar-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  button, input { font: inherit; color: inherit; }
+  button { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 5px 12px; cursor: pointer; }
+  button[aria-pressed="true"] { background: var(--text); color: var(--surface); border-color: var(--text); }
+  input { background: var(--page); border: 1px solid var(--border); border-radius: 6px; padding: 5px 8px; min-width: 0; }
+  .hero { font-size: 48px; font-weight: 600; line-height: 1.1; }
+  .hero-sub { color: var(--text-2); margin-bottom: 16px; }
+  .chart { display: grid; grid-template-columns: auto 1fr; gap: 0 8px; }
+  .yaxis { height: 180px; display: flex; flex-direction: column; justify-content: space-between; text-align: right; color: var(--text-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .yaxis span { line-height: 1; transform: translateY(-50%); }
+  .yaxis span:last-child { transform: translateY(50%); }
+  .plot { position: relative; height: 180px; background:
+      linear-gradient(var(--grid), var(--grid)) top / 100% 1px no-repeat,
+      linear-gradient(var(--grid), var(--grid)) center / 100% 1px no-repeat;
+    border-bottom: 1px solid var(--border); display: flex; align-items: stretch; }
+  .col { flex: 1; min-width: 0; display: flex; align-items: flex-end; justify-content: center; padding: 0 1px; }
+  .col div { width: 100%; max-width: 24px; background: var(--series); border-radius: 4px 4px 0 0; }
+  .col:hover { background: color-mix(in srgb, var(--text) 6%, transparent); }
+  .xaxis { grid-column: 2; position: relative; height: 20px; color: var(--text-3); font-size: 12px; }
+  .xaxis span { position: absolute; top: 4px; transform: translateX(-50%); white-space: nowrap; }
+  .tip { position: absolute; pointer-events: none; background: var(--text); color: var(--surface); padding: 4px 8px; border-radius: 6px; font-size: 12px; white-space: nowrap; transform: translate(-50%, -100%); display: none; z-index: 2; }
+  details summary { cursor: pointer; color: var(--text-2); }
+  table { border-collapse: collapse; margin-top: 8px; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 3px 24px 3px 0; border-bottom: 1px solid var(--grid); }
+  td:last-child, th:last-child { text-align: right; padding-right: 0; }
+  .people { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 12px; }
+  .person { font-size: 12px; color: var(--text-2); min-width: 0; }
+  .person img, .person .ph { width: 100%; height: 130px; object-fit: cover; border-radius: 6px; background: var(--grid); display: block; }
+  .person b { color: var(--text); font-weight: 600; }
+  .empty { color: var(--text-3); }
+  form { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-top: 12px; }
+  label { display: grid; gap: 4px; color: var(--text-2); }
+  label small { color: var(--text-3); }
+  .wide { grid-column: 1 / -1; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>People Counter</h1>
+    <span class="pill" id="pill"><i></i><span id="state">Loading</span></span>
+  </header>
+
+  <section class="top">
+    <div class="card">
+      <h2>Live view</h2>
+      <div class="live" id="live"><span>Waiting for video</span></div>
+    </div>
+    <div class="card">
+      <h2>Discovery status</h2>
+      <dl>
+        <dt>Source</dt><dd id="s-source">–</dd>
+        <dt>Resolution</dt><dd id="s-res">–</dd>
+        <dt>Camera frame rate</dt><dd id="s-cfps">–</dd>
+        <dt>Analysis rate</dt><dd id="s-pfps">–</dd>
+        <dt>Detection time</dt><dd id="s-ms">–</dd>
+        <dt>Last analysed frame</dt><dd id="s-age">–</dd>
+        <dt>People in frame</dt><dd id="s-in">–</dd>
+        <dt>Not yet confirmed</dt><dd id="s-pending">–</dd>
+        <dt>Recently left (re-entry watch)</dt><dd id="s-rem">–</dd>
+        <dt>Model</dt><dd id="s-model">–</dd>
+        <dt>Uptime</dt><dd id="s-up">–</dd>
+      </dl>
+      <div class="error" id="s-error"></div>
+    </div>
+  </section>
+
+  <section class="tiles">
+    <div class="card tile"><div class="v" id="t-in">–</div><div class="l">In frame now</div></div>
+    <div class="card tile"><div class="v" id="t-1h">–</div><div class="l">Unique, last hour</div></div>
+    <div class="card tile"><div class="v" id="t-24h">–</div><div class="l">Unique, last 24 hours</div></div>
+    <div class="card tile"><div class="v" id="t-all">–</div><div class="l">Unique, all time</div></div>
+  </section>
+
+  <section class="card">
+    <h2>Unique people by timeframe</h2>
+    <div class="bar-row" id="presets">
+      <button data-r="1h">Last hour</button>
+      <button data-r="24h">Last 24 hours</button>
+      <button data-r="today">Today</button>
+      <button data-r="7d">Last 7 days</button>
+      <button data-r="30d">Last 30 days</button>
+      <span style="flex:1"></span>
+      <input type="datetime-local" id="from" aria-label="From">
+      <span>to</span>
+      <input type="datetime-local" id="to" aria-label="To">
+      <button data-r="custom">Apply</button>
+    </div>
+    <div class="hero" id="hero">–</div>
+    <div class="hero-sub" id="hero-sub">&nbsp;</div>
+    <div class="chart">
+      <div class="yaxis" id="yaxis"></div>
+      <div class="plot" id="plot"><div class="tip" id="tip"></div></div>
+      <div class="xaxis" id="xaxis"></div>
+    </div>
+    <details style="margin-top:12px">
+      <summary>Show as table</summary>
+      <table id="table"></table>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>Most recent people</h2>
+    <div class="people" id="people"><span class="empty">Nobody counted yet.</span></div>
+  </section>
+
+  <section class="card">
+    <details id="settings">
+      <summary><b>Settings</b></summary>
+      <form id="form">
+        <label class="wide">Camera stream URL
+          <input name="source" placeholder="rtsp://user:password@192.168.1.10:554/stream1" autocomplete="off" spellcheck="false">
+        </label>
+        <label>Analysis rate (frames per second)
+          <input name="fps" type="number" step="0.5" min="1" max="15">
+          <small>Higher follows fast movers better but uses more CPU.</small>
+        </label>
+        <label>Detection confidence
+          <input name="conf" type="number" step="0.05" min="0.1" max="0.95">
+          <small>Raise it if objects are mistaken for people.</small>
+        </label>
+        <label>Sightings before counting
+          <input name="min_hits" type="number" step="1" min="1" max="100">
+          <small>Analysed frames a person must appear in to be counted.</small>
+        </label>
+        <label>Re-entry window (minutes)
+          <input name="reentry_minutes" type="number" step="1" min="0" max="240">
+          <small>Someone returning within this time is not counted again. 0 turns it off.</small>
+        </label>
+        <label>Re-entry match strictness
+          <input name="similarity" type="number" step="0.05" min="0.1" max="1">
+          <small>Clothing-colour similarity needed to treat a returner as the same person.</small>
+        </label>
+        <label>Quick-return window (seconds)
+          <input name="quick_seconds" type="number" step="5" min="0" max="600">
+          <small>Someone appearing near where a person vanished within this time is the same person. 0 turns it off.</small>
+        </label>
+        <div class="wide"><button type="submit">Save</button> <span id="saved" class="empty"></span></div>
+      </form>
+    </details>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const STATES = { streaming: 'Streaming', connecting: 'Connecting', error: 'Stream error', unconfigured: 'No camera configured', starting: 'Starting' };
+const api = (path, opts) => fetch(path, opts).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); });
+
+function duration(s) {
+  s = Math.round(s);
+  if (s < 60) return s + ' s';
+  if (s < 3600) return Math.floor(s / 60) + ' min ' + (s % 60) + ' s';
+  if (s < 86400) return Math.floor(s / 3600) + ' h ' + Math.floor(s % 3600 / 60) + ' min';
+  return Math.floor(s / 86400) + ' d ' + Math.floor(s % 86400 / 3600) + ' h';
+}
+
+let hasVideo = false;
+async function refreshStatus() {
+  let s;
+  try { s = await api('/api/status'); }
+  catch { $('pill').className = 'pill error'; $('state').textContent = 'Server unreachable'; return; }
+  $('pill').className = 'pill ' + s.state;
+  $('state').textContent = STATES[s.state] || s.state;
+  $('s-source').textContent = s.source || 'Not set';
+  $('s-res').textContent = s.resolution ? s.resolution.join(' × ') : '–';
+  $('s-cfps').textContent = s.capture_fps ? s.capture_fps + ' fps' : '–';
+  $('s-pfps').textContent = s.process_fps ? s.process_fps + ' fps' : '–';
+  $('s-ms').textContent = s.infer_ms ? s.infer_ms + ' ms' : '–';
+  $('s-age').textContent = s.frame_age == null ? '–' : duration(s.frame_age) + ' ago';
+  $('s-in').textContent = s.in_frame;
+  $('s-pending').textContent = s.pending;
+  $('s-rem').textContent = s.remembered;
+  $('s-model').textContent = s.model;
+  $('s-up').textContent = duration(s.uptime);
+  $('s-error').textContent = s.error;
+  $('t-in').textContent = s.in_frame;
+  $('t-1h').textContent = s.last_hour.toLocaleString();
+  $('t-24h').textContent = s.last_24h.toLocaleString();
+  $('t-all').textContent = s.all_time.toLocaleString();
+  if (!hasVideo && s.frame_age != null) {
+    hasVideo = true;
+    $('live').innerHTML = '<img src="/stream.mjpg" alt="Live camera view with detected people outlined">';
+  }
+  if (s.state === 'unconfigured') $('settings').open = true;
+}
+
+// ---- chart ----
+const HOUR = 3600, DAY = 86400;
+let range = '24h';
+
+function bounds() {
+  const now = Date.now() / 1000;
+  const midnight = new Date().setHours(0, 0, 0, 0) / 1000;
+  const nextHour = new Date().setMinutes(0, 0, 0) / 1000 + HOUR;
+  switch (range) {
+    case '1h': { const end = Math.ceil(now / 300) * 300; return [end - HOUR, end, 300]; }
+    case 'today': return [midnight, midnight + DAY, HOUR];
+    case '7d': return [midnight - 6 * DAY, midnight + DAY, DAY];
+    case '30d': return [midnight - 29 * DAY, midnight + DAY, DAY];
+    case 'custom': {
+      const a = new Date($('from').value) / 1000, b = new Date($('to').value) / 1000;
+      if (!(b > a)) return null;
+      const span = b - a;
+      return [a, b, span <= 3 * HOUR ? 300 : span <= 3 * DAY ? HOUR : DAY];
+    }
+    default: return [nextHour - DAY, nextHour, HOUR];
+  }
+}
+
+function niceMax(m) {
+  for (let p = 1; ; p *= 10)
+    for (const f of [2, 4, 6, 8, 10]) if (f * p >= m) return f * p;
+}
+
+const fmtTime = t => new Date(t * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const fmtDay = t => new Date(t * 1000).toLocaleDateString([], { month: 'short', day: 'numeric' });
+
+async function refreshChart() {
+  const b = bounds();
+  if (!b) return;
+  const [start, end, bucket] = b;
+  let data;
+  try { data = await api(`/api/counts?start=${start}&end=${end}&bucket=${bucket}`); } catch { return; }
+  const counts = data.counts, n = counts.length;
+  const total = counts.reduce((a, c) => a + c, 0);
+  const daily = bucket >= DAY, multiDay = end - start >= DAY;
+  const label = i => {
+    const t = start + i * bucket;
+    return daily ? fmtDay(t) : (multiDay ? fmtDay(t) + ' ' : '') + fmtTime(t);
+  };
+  const span = i => daily ? label(i) : label(i) + ' – ' + fmtTime(Math.min(start + (i + 1) * bucket, end));
+
+  $('hero').textContent = total.toLocaleString();
+  $('hero-sub').textContent = `unique ${total === 1 ? 'person' : 'people'}, ${label(0)} to ${daily ? label(n - 1) : (multiDay ? fmtDay(end) + ' ' : '') + fmtTime(end)}`;
+
+  const top = niceMax(Math.max(...counts, 1));
+  $('yaxis').innerHTML = [top, top / 2, 0].map(v => `<span>${v.toLocaleString()}</span>`).join('');
+  const plot = $('plot'), tip = $('tip');
+  plot.querySelectorAll('.col').forEach(c => c.remove());
+  counts.forEach((c, i) => {
+    const col = document.createElement('div');
+    col.className = 'col';
+    col.innerHTML = `<div style="height:${c ? Math.max(c / top * 100, 1.5) : 0}%"></div>`;
+    col.onmouseenter = () => {
+      tip.textContent = `${span(i)}: ${c.toLocaleString()} ${c === 1 ? 'person' : 'people'}`;
+      tip.style.display = 'block';
+      const x = col.offsetLeft + col.offsetWidth / 2, half = tip.offsetWidth / 2;
+      tip.style.left = Math.min(Math.max(x, half), plot.offsetWidth - half) + 'px';
+      tip.style.top = (plot.offsetHeight * (1 - c / top) - 6) + 'px';
+    };
+    col.onmouseleave = () => tip.style.display = 'none';
+    plot.appendChild(col);
+  });
+  const step = Math.ceil(n / Math.max(Math.floor(plot.offsetWidth / 90), 2));
+  $('xaxis').innerHTML = counts.map((_, i) => i % step ? '' :
+    `<span style="left:${(i + 0.5) / n * 100}%">${label(i)}</span>`).join('');
+  $('table').innerHTML = '<tr><th>Period</th><th>Unique people</th></tr>' +
+    counts.map((c, i) => `<tr><td>${span(i)}</td><td>${c.toLocaleString()}</td></tr>`).join('');
+}
+
+$('presets').addEventListener('click', e => {
+  const r = e.target.dataset.r;
+  if (!r) return;
+  range = r;
+  document.querySelectorAll('#presets button').forEach(b => b.setAttribute('aria-pressed', b.dataset.r === r && r !== 'custom'));
+  refreshChart();
+});
+document.querySelector('[data-r="24h"]').setAttribute('aria-pressed', true);
+window.addEventListener('resize', refreshChart);
+
+// ---- recent people ----
+async function refreshPeople() {
+  let people;
+  try { people = await api('/api/people?limit=24'); } catch { return; }
+  if (!people.length) return;
+  const today = new Date().toDateString();
+  $('people').innerHTML = people.map(p => {
+    const d = new Date(p.first_seen * 1000);
+    const when = (d.toDateString() === today ? '' : fmtDay(p.first_seen) + ' ') + d.toLocaleTimeString();
+    const extra = p.visits > 1 ? ` · ${p.visits} visits` : '';
+    return `<div class="person"><img loading="lazy" src="/thumbs/${p.id}.jpg" alt="Person ${p.id}" onerror="this.outerHTML='<div class=ph></div>'">
+      <b>#${p.id}</b> ${when}<br>in view ${duration(p.last_seen - p.first_seen)}${extra}</div>`;
+  }).join('');
+}
+
+// ---- settings ----
+const form = $('form');
+function fill(cfg) { for (const [k, v] of Object.entries(cfg)) if (form[k]) form[k].value = v; }
+api('/api/config').then(fill);
+form.addEventListener('submit', async e => {
+  e.preventDefault();
+  const body = {};
+  for (const el of form.elements) if (el.name) body[el.name] = el.type === 'number' ? Number(el.value) : el.value;
+  try {
+    fill(await api('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
+    $('saved').textContent = 'Saved';
+  } catch { $('saved').textContent = 'Could not save'; }
+  setTimeout(() => $('saved').textContent = '', 3000);
+  refreshStatus();
+});
+
+refreshStatus(); refreshChart(); refreshPeople();
+setInterval(refreshStatus, 2000);
+setInterval(() => { refreshChart(); refreshPeople(); }, 10000);
+</script>
+</body>
+</html>

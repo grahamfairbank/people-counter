@@ -1,0 +1,5 @@
+# Runtime data: database, thumbnails of people, and saved settings (camera password)
+data/
+.env
+__pycache__/
+*.py[cod]

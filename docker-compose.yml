@@ -1,0 +1,12 @@
+services:
+  people-counter:
+    build: .
+    image: people-counter:latest
+    container_name: people-counter
+    ports:
+      - "8095:8095"
+    env_file: .env
+    volumes:
+      # SQLite database, thumbnails and settings saved from the web UI.
+      - ./data:/data
+    restart: unless-stopped
